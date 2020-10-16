@@ -3,9 +3,12 @@
 /**
  * Export shared utilities
  */
-
-const convertRestQueryParams = require('./convertRestQueryParams');
-const buildQuery = require('./buildQuery');
+const { buildQuery, hasDeepFilters } = require('./build-query');
+const {
+  convertRestQueryParams,
+  VALID_REST_OPERATORS,
+  QUERY_OPERATORS,
+} = require('./convert-rest-query-params');
 const parseMultipartData = require('./parse-multipart');
 const sanitizeEntity = require('./sanitize-entity');
 const parseType = require('./parse-type');
@@ -13,15 +16,21 @@ const finder = require('./finder');
 const logger = require('./logger');
 const models = require('./models');
 const policy = require('./policy');
-const templateConfiguration = require('./templateConfiguration');
+const templateConfiguration = require('./template-configuration');
 const { yup, formatYupErrors } = require('./validators');
 const {
   nameToSlug,
   nameToCollectionName,
   getCommonBeginning,
   escapeQuery,
-} = require('./stringFormatting');
-const { getConfigUrls } = require('./config');
+  stringIncludes,
+  stringEquals,
+} = require('./string-formatting');
+const { removeUndefined } = require('./object-formatting');
+const { getConfigUrls, getAbsoluteAdminUrl, getAbsoluteServerUrl } = require('./config');
+const { generateTimestampCode } = require('./code-generator');
+const contentTypes = require('./content-types');
+const webhook = require('./webhook');
 
 module.exports = {
   yup,
@@ -32,7 +41,10 @@ module.exports = {
   policy,
   templateConfiguration,
   convertRestQueryParams,
+  VALID_REST_OPERATORS,
+  QUERY_OPERATORS,
   buildQuery,
+  hasDeepFilters,
   parseMultipartData,
   sanitizeEntity,
   parseType,
@@ -41,4 +53,12 @@ module.exports = {
   getCommonBeginning,
   getConfigUrls,
   escapeQuery,
+  removeUndefined,
+  getAbsoluteAdminUrl,
+  getAbsoluteServerUrl,
+  generateTimestampCode,
+  stringIncludes,
+  stringEquals,
+  contentTypes,
+  webhook,
 };

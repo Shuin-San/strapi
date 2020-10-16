@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 import PropTypes from 'prop-types';
-
+import { useGlobalContext } from 'strapi-helper-plugin';
 import useListView from '../../hooks/useListView';
 import CustomInputCheckbox from '../CustomInputCheckbox';
 import { Arrow, Thead } from './styledComponents';
@@ -13,9 +13,10 @@ function TableHeader({ headers, isBulkable }) {
     entriesToDelete,
     firstSortableElement,
     onChangeBulkSelectall,
-    onChangeParams,
-    searchParams: { _sort },
+    onChangeSearch,
+    _sort,
   } = useListView();
+  const { emitEvent } = useGlobalContext();
   const [sortBy, sortOrder] = _sort.split(':');
 
   return (
@@ -35,9 +36,10 @@ function TableHeader({ headers, isBulkable }) {
         {headers.map(header => {
           return (
             <th
-              key={header.name}
+              key={header.key || header.name}
               onClick={() => {
                 if (header.sortable) {
+                  emitEvent('didSortEntries');
                   const isCurrentSort = header.name === sortBy;
                   const nextOrder = isCurrentSort && sortOrder === 'ASC' ? 'DESC' : 'ASC';
                   let value = `${header.name}:${nextOrder}`;
@@ -46,7 +48,7 @@ function TableHeader({ headers, isBulkable }) {
                     value = `${firstSortableElement}:ASC`;
                   }
 
-                  onChangeParams({
+                  onChangeSearch({
                     target: {
                       name: '_sort',
                       value,

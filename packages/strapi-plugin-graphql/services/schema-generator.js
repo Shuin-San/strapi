@@ -14,6 +14,7 @@ const { buildModels } = require('./type-definitions');
 const { mergeSchemas, createDefaultSchema, diffResolvers } = require('./utils');
 const { toSDL } = require('./schema-definitions');
 const { buildQuery, buildMutation } = require('./resolvers-builder');
+const PublicationState = require('../types/publication-state');
 
 /**
  * Generate GraphQL schema.
@@ -51,9 +52,12 @@ const generateSchema = () => {
   const mutationFields =
     shadowCRUD.mutation && toSDL(shadowCRUD.mutation, resolver.Mutation, null, 'mutation');
 
+  Object.assign(resolvers, PublicationState.resolver);
+
   const scalars = Types.getScalars();
 
   Object.assign(resolvers, scalars);
+
   const scalarDef = Object.keys(scalars)
     .map(key => `scalar ${key}`)
     .join('\n');
@@ -65,6 +69,15 @@ const generateSchema = () => {
       ${polymorphicSchema.definition}
 
       ${Types.addInput()}
+      
+      ${PublicationState.definition}
+
+      type AdminUser {
+        id: ID!
+        username: String
+        firstname: String!
+        lastname: String!
+      }
 
       type Query {
         ${queryFields}
@@ -79,7 +92,7 @@ const generateSchema = () => {
       ${scalarDef}
     `;
 
-  // // Build schema.
+  // Build schema.
   if (strapi.config.environment !== 'production') {
     // Write schema.
     const schema = makeExecutableSchema({
@@ -89,9 +102,6 @@ const generateSchema = () => {
 
     writeGenerateSchema(graphql.printSchema(schema));
   }
-
-  // Remove custom scalar (like Upload);
-  typeDefs = Types.removeCustomScalar(typeDefs, resolvers);
 
   return {
     typeDefs: gql(typeDefs),

@@ -4,14 +4,12 @@
  */
 
 const _ = require('lodash');
-const {
-  convertRestQueryParams,
-  buildQuery,
-  models: modelUtils,
-  escapeQuery,
-} = require('strapi-utils');
+const pmap = require('p-map');
+const { convertRestQueryParams, buildQuery, escapeQuery } = require('strapi-utils');
+const { contentTypes: contentTypesUtils } = require('strapi-utils');
+const { PUBLISHED_AT_ATTRIBUTE } = contentTypesUtils.constants;
 
-module.exports = function createQueryBuilder({ model, modelKey, strapi }) {
+module.exports = function createQueryBuilder({ model, strapi }) {
   /* Utils */
   // association key
   const assocKeys = model.associations.map(ast => ast.alias);
@@ -21,17 +19,18 @@ module.exports = function createQueryBuilder({ model, modelKey, strapi }) {
   });
 
   const timestamps = _.get(model, ['options', 'timestamps'], []);
+  const hasDraftAndPublish = contentTypesUtils.hasDraftAndPublish(model);
 
   // Returns an object with relation keys only to create relations in DB
-  const pickRelations = values => {
-    return _.pick(values, assocKeys);
+  const pickRelations = attributes => {
+    return _.pick(attributes, assocKeys);
   };
 
   // keys to exclude to get attribute keys
   const excludedKeys = assocKeys.concat(componentKeys);
   // Returns an object without relational keys to persist in DB
-  const selectAttributes = values => {
-    return _.pickBy(values, (value, key) => {
+  const selectAttributes = attributes => {
+    return _.pickBy(attributes, (value, key) => {
       if (Array.isArray(timestamps) && timestamps.includes(key)) {
         return false;
       }
@@ -60,12 +59,14 @@ module.exports = function createQueryBuilder({ model, modelKey, strapi }) {
    */
   function find(params, populate, { transacting } = {}) {
     const filters = convertRestQueryParams(params);
+    const query = buildQuery({ model, filters });
 
     return model
-      .query(buildQuery({ model, filters }))
+      .query(query)
       .fetchAll({
         withRelated: populate,
         transacting,
+        publicationState: filters.publicationState,
       })
       .then(results => results.toJSON());
   }
@@ -74,22 +75,29 @@ module.exports = function createQueryBuilder({ model, modelKey, strapi }) {
    * Count entries based on filters
    */
   function count(params = {}) {
-    const { where } = convertRestQueryParams(params);
+    const filters = convertRestQueryParams(_.omit(params, ['_sort', '_limit', '_start']));
 
     return model
-      .query(buildQuery({ model, filters: { where } }))
+      .query(buildQuery({ model, filters }))
       .count()
       .then(Number);
   }
 
-  async function create(values, { transacting } = {}) {
-    const relations = pickRelations(values);
-    const data = selectAttributes(values);
+  async function create(attributes, { transacting } = {}) {
+    const relations = pickRelations(attributes);
+    const data = { ...selectAttributes(attributes) };
+
+    if (hasDraftAndPublish) {
+      data[PUBLISHED_AT_ATTRIBUTE] = _.has(attributes, PUBLISHED_AT_ATTRIBUTE)
+        ? attributes[PUBLISHED_AT_ATTRIBUTE]
+        : new Date();
+    }
 
     const runCreate = async trx => {
       // Create entry with no-relational data.
       const entry = await model.forge(data).save(null, { transacting: trx });
-      await createComponents(entry, values, { transacting: trx });
+      const isDraft = contentTypesUtils.isDraft(entry.toJSON(), model);
+      await createComponents(entry, attributes, { transacting: trx, isDraft });
 
       return model.updateRelations({ id: entry.id, values: relations }, { transacting: trx });
     };
@@ -97,7 +105,7 @@ module.exports = function createQueryBuilder({ model, modelKey, strapi }) {
     return wrapTransaction(runCreate, { transacting });
   }
 
-  async function update(params, values, { transacting } = {}) {
+  async function update(params, attributes, { transacting } = {}) {
     const entry = await model.where(params).fetch({ transacting });
 
     if (!entry) {
@@ -106,9 +114,9 @@ module.exports = function createQueryBuilder({ model, modelKey, strapi }) {
       throw err;
     }
 
-    // Extract values related to relational data.
-    const relations = pickRelations(values);
-    const data = selectAttributes(values);
+    // Extract attributes related to relational data.
+    const relations = pickRelations(attributes);
+    const data = selectAttributes(attributes);
 
     const runUpdate = async trx => {
       const updatedEntry =
@@ -119,7 +127,8 @@ module.exports = function createQueryBuilder({ model, modelKey, strapi }) {
               patch: true,
             })
           : entry;
-      await updateComponents(updatedEntry, values, { transacting: trx });
+
+      await updateComponents(updatedEntry, attributes, { transacting: trx });
 
       if (Object.keys(relations).length > 0) {
         return model.updateRelations({ id: entry.id, values: relations }, { transacting: trx });
@@ -160,46 +169,35 @@ module.exports = function createQueryBuilder({ model, modelKey, strapi }) {
       return null;
     }
 
-    const entries = await find(params, null, { transacting });
-    return Promise.all(entries.map(entry => deleteOne(entry.id, { transacting })));
+    const paramsWithDefaults = _.defaults(params, { _limit: -1 });
+    const entries = await find(paramsWithDefaults, null, { transacting });
+    return pmap(entries, entry => deleteOne(entry.id, { transacting }), {
+      concurrency: 100,
+      stopOnError: true,
+    });
   }
 
   function search(params, populate) {
-    // Convert `params` object to filters compatible with Bookshelf.
-    const filters = modelUtils.convertParams(modelKey, params);
+    const filters = convertRestQueryParams(_.omit(params, '_q'));
 
     return model
-      .query(qb => {
-        buildSearchQuery(qb, model, params);
-
-        if (filters.sort) {
-          qb.orderBy(filters.sort.key, filters.sort.order);
-        }
-
-        if (filters.start) {
-          qb.offset(_.toNumber(filters.start));
-        }
-
-        if (filters.limit) {
-          qb.limit(_.toNumber(filters.limit));
-        }
-      })
-      .fetchAll({
-        withRelated: populate,
-      })
+      .query(qb => qb.where(buildSearchQuery({ model, params })))
+      .query(buildQuery({ model, filters }))
+      .fetchAll({ withRelated: populate })
       .then(results => results.toJSON());
   }
 
   function countSearch(params) {
+    const filters = convertRestQueryParams(_.omit(params, ['_q', '_sort', '_limit', '_start']));
+
     return model
-      .query(qb => {
-        buildSearchQuery(qb, model, params);
-      })
+      .query(qb => qb.where(buildSearchQuery({ model, params })))
+      .query(buildQuery({ model, filters }))
       .count()
       .then(Number);
   }
 
-  async function createComponents(entry, values, { transacting }) {
+  async function createComponents(entry, attributes, { transacting, isDraft }) {
     if (componentKeys.length === 0) return;
 
     const joinModel = model.componentsJoinModel;
@@ -232,18 +230,17 @@ module.exports = function createQueryBuilder({ model, modelKey, strapi }) {
           const { component, required = false, repeatable = false } = attr;
           const componentModel = strapi.components[component];
 
-          if (required === true && !_.has(values, key)) {
+          if (!isDraft && required === true && !_.has(attributes, key)) {
             const err = new Error(`Component ${key} is required`);
             err.status = 400;
             throw err;
           }
 
-          if (!_.has(values, key)) continue;
+          if (!_.has(attributes, key)) continue;
 
-          const componentValue = values[key];
+          const componentValue = attributes[key];
 
           if (repeatable === true) {
-            validateRepeatableInput(componentValue, { key, ...attr });
             await Promise.all(
               componentValue.map((value, idx) =>
                 createComponentAndLink({
@@ -255,8 +252,6 @@ module.exports = function createQueryBuilder({ model, modelKey, strapi }) {
               )
             );
           } else {
-            validateNonRepeatableInput(componentValue, { key, ...attr });
-
             if (componentValue === null) continue;
             await createComponentAndLink({
               componentModel,
@@ -270,17 +265,15 @@ module.exports = function createQueryBuilder({ model, modelKey, strapi }) {
         case 'dynamiczone': {
           const { required = false } = attr;
 
-          if (required === true && !_.has(values, key)) {
+          if (!isDraft && required === true && !_.has(attributes, key)) {
             const err = new Error(`Dynamiczone ${key} is required`);
             err.status = 400;
             throw err;
           }
 
-          if (!_.has(values, key)) continue;
+          if (!_.has(attributes, key)) continue;
 
-          const dynamiczoneValues = values[key];
-
-          validateDynamiczoneInput(dynamiczoneValues, { key, ...attr });
+          const dynamiczoneValues = attributes[key];
 
           await Promise.all(
             dynamiczoneValues.map((value, idx) => {
@@ -300,7 +293,7 @@ module.exports = function createQueryBuilder({ model, modelKey, strapi }) {
     }
   }
 
-  async function updateComponents(entry, values, { transacting }) {
+  async function updateComponents(entry, attributes, { transacting }) {
     if (componentKeys.length === 0) return;
 
     const joinModel = model.componentsJoinModel;
@@ -354,7 +347,7 @@ module.exports = function createQueryBuilder({ model, modelKey, strapi }) {
 
     for (let key of componentKeys) {
       // if key isn't present then don't change the current component data
-      if (!_.has(values, key)) continue;
+      if (!_.has(attributes, key)) continue;
 
       const attr = model.attributes[key];
       const { type } = attr;
@@ -365,11 +358,9 @@ module.exports = function createQueryBuilder({ model, modelKey, strapi }) {
 
           const componentModel = strapi.components[component];
 
-          const componentValue = values[key];
+          const componentValue = attributes[key];
 
           if (repeatable === true) {
-            validateRepeatableInput(componentValue, { key, ...attr });
-
             await deleteOldComponents(entry, componentValue, {
               key,
               joinModel,
@@ -388,8 +379,6 @@ module.exports = function createQueryBuilder({ model, modelKey, strapi }) {
               })
             );
           } else {
-            validateNonRepeatableInput(componentValue, { key, ...attr });
-
             await deleteOldComponents(entry, componentValue, {
               key,
               joinModel,
@@ -410,9 +399,7 @@ module.exports = function createQueryBuilder({ model, modelKey, strapi }) {
           break;
         }
         case 'dynamiczone': {
-          const dynamiczoneValues = values[key];
-
-          validateDynamiczoneInput(dynamiczoneValues, { key, ...attr });
+          const dynamiczoneValues = attributes[key];
 
           await deleteDynamicZoneOldComponents(entry, dynamiczoneValues, {
             key,
@@ -647,11 +634,10 @@ module.exports = function createQueryBuilder({ model, modelKey, strapi }) {
 
 /**
  * util to build search query
- * @param {*} qb
  * @param {*} model
  * @param {*} params
  */
-const buildSearchQuery = (qb, model, params) => {
+const buildSearchQuery = ({ model, params }) => qb => {
   const query = params._q;
 
   const associations = model.associations.map(x => x.alias);
@@ -677,105 +663,27 @@ const buildSearchQuery = (qb, model, params) => {
   switch (model.client) {
     case 'pg':
       searchColumns.forEach(attr =>
-        qb.orWhereRaw(`"${attr}"::text ILIKE ?`, `%${escapeQuery(query, '*%\\')}%`)
+        qb.orWhereRaw(
+          `"${model.collectionName}"."${attr}"::text ILIKE ?`,
+          `%${escapeQuery(query, '*%\\')}%`
+        )
       );
       break;
     case 'sqlite3':
       searchColumns.forEach(attr =>
-        qb.orWhereRaw(`"${attr}" LIKE ? ESCAPE '\\'`, `%${escapeQuery(query, '*%\\')}%`)
+        qb.orWhereRaw(
+          `"${model.collectionName}"."${attr}" LIKE ? ESCAPE '\\'`,
+          `%${escapeQuery(query, '*%\\')}%`
+        )
       );
       break;
     case 'mysql':
       searchColumns.forEach(attr =>
-        qb.orWhereRaw(`\`${attr}\` LIKE ?`, `%${escapeQuery(query, '*%\\')}%`)
+        qb.orWhereRaw(
+          `\`${model.collectionName}\`.\`${attr}\` LIKE ?`,
+          `%${escapeQuery(query, '*%\\')}%`
+        )
       );
       break;
   }
 };
-
-function validateRepeatableInput(value, { key, min, max, required }) {
-  if (!Array.isArray(value)) {
-    const err = new Error(`Component ${key} is repetable. Expected an array`);
-    err.status = 400;
-    throw err;
-  }
-
-  value.forEach(val => {
-    if (typeof val !== 'object' || Array.isArray(val) || val === null) {
-      const err = new Error(
-        `Component ${key} has invalid items. Expected each items to be objects`
-      );
-      err.status = 400;
-      throw err;
-    }
-  });
-
-  if ((required === true || (required !== true && value.length > 0)) && min && value.length < min) {
-    const err = new Error(`Component ${key} must contain at least ${min} items`);
-    err.status = 400;
-    throw err;
-  }
-
-  if (max && value.length > max) {
-    const err = new Error(`Component ${key} must contain at most ${max} items`);
-    err.status = 400;
-    throw err;
-  }
-}
-
-function validateNonRepeatableInput(value, { key, required }) {
-  if (typeof value !== 'object' || Array.isArray(value)) {
-    const err = new Error(`Component ${key} should be an object`);
-    err.status = 400;
-    throw err;
-  }
-
-  if (required === true && value === null) {
-    const err = new Error(`Component ${key} is required`);
-    err.status = 400;
-    throw err;
-  }
-}
-
-function validateDynamiczoneInput(value, { key, min, max, components, required }) {
-  if (!Array.isArray(value)) {
-    const err = new Error(`Dynamiczone ${key} is invalid. Expected an array`);
-    err.status = 400;
-    throw err;
-  }
-
-  value.forEach(val => {
-    if (typeof val !== 'object' || Array.isArray(val) || val === null) {
-      const err = new Error(
-        `Dynamiczone ${key} has invalid items. Expected each items to be objects`
-      );
-      err.status = 400;
-      throw err;
-    }
-
-    if (!_.has(val, '__component')) {
-      const err = new Error(
-        `Dynamiczone ${key} has invalid items. Expected each items to have a valid __component key`
-      );
-      err.status = 400;
-      throw err;
-    } else if (!components.includes(val.__component)) {
-      const err = new Error(
-        `Dynamiczone ${key} has invalid items. Each item must have a __component key that is present in the attribute definition`
-      );
-      err.status = 400;
-      throw err;
-    }
-  });
-
-  if ((required === true || (required !== true && value.length > 0)) && min && value.length < min) {
-    const err = new Error(`Dynamiczone ${key} must contain at least ${min} items`);
-    err.status = 400;
-    throw err;
-  }
-  if (max && value.length > max) {
-    const err = new Error(`Dynamiczone ${key} must contain at most ${max} items`);
-    err.status = 400;
-    throw err;
-  }
-}

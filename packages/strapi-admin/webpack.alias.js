@@ -1,17 +1,20 @@
+const path = require('path');
 const alias = [
   'object-assign',
   'whatwg-fetch',
   '@babel/polyfill',
-  '@buffetjs/core',
-  '@buffetjs/custom',
-  '@buffetjs/icons',
-  '@buffetjs/styles',
-  '@buffetjs/utils',
   '@fortawesome/fontawesome-svg-core',
   '@fortawesome/free-solid-svg-icons',
+  '@buffetjs/core',
+  '@buffetjs/custom',
+  '@buffetjs/custom',
+  '@buffetjs/utils',
+  '@buffetjs/icons',
+  '@buffetjs/hooks',
   'classnames',
   'history',
   'hoist-non-react-statics',
+  'immer',
   'immutable',
   'invariant',
   'moment',
@@ -20,6 +23,7 @@ const alias = [
   'react-dnd',
   'react-dnd-html5-backend',
   'react-dom',
+  'react-fast-compare',
   'react-helmet',
   'react-is',
   'react-intl',
@@ -33,7 +37,6 @@ const alias = [
   'react-select',
   'redux',
   'redux-immutable',
-  'remove-markdown',
   'reselect',
   'styled-components',
   'yup',
@@ -41,8 +44,7 @@ const alias = [
 
 module.exports = alias.reduce(
   (acc, curr) => {
-    acc[curr] = require.resolve(curr);
-
+    acc[`${curr}$`] = require.resolve(curr);
     return acc;
   },
   {
@@ -51,5 +53,6 @@ module.exports = alias.reduce(
     'react-select/async-creatable': require.resolve('react-select/async-creatable'),
     'react-select/base': require.resolve('react-select/base'),
     'react-select/creatable': require.resolve('react-select/creatable'),
+    ee_else_ce: path.resolve(__dirname),
   }
 );

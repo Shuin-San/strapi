@@ -17,6 +17,7 @@ import hasSubArray from './utils/hasSubArray';
 import hasSomeSubArray from './utils/HasSomeSubArray';
 
 /* eslint-disable jsx-a11y/no-static-element-interactions */
+/* eslint-disable jsx-a11y/click-events-have-key-events */
 
 const MultipleMenuList = ({
   selectProps: { name, addComponentsToDynamicZone, inputValue, value },
@@ -172,7 +173,7 @@ const MultipleMenuList = ({
           return (
             <li key={categoryName} className="li-multi-menu">
               <div style={{ marginTop: 3 }}>
-                <CheckboxWrapper>
+                <CheckboxWrapper style={{ display: 'flex' }}>
                   <Label
                     htmlFor="overrideReactSelectBehavior"
                     onClick={() => {
@@ -190,7 +191,6 @@ const MultipleMenuList = ({
                   </Label>
                   <div
                     style={{
-                      display: 'flex',
                       width: '150px',
                       textAlign: 'right',
                       flexGrow: 2,

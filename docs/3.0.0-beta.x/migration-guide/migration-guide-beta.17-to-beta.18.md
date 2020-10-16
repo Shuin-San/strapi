@@ -2,7 +2,7 @@
 
 Upgrading your Strapi application to `v3.0.0-beta.18`.
 
-**Make sure your server is not running until the end of the migration**
+**Make sure your server is not running until then end of the migration**
 
 ## Upgrading your dependencies
 
@@ -598,7 +598,7 @@ toGlobalId = name => upperFirst(camelCase(`group_${name}`));
 ```js
 db.getCollection('contentTypeCollection').update(
   { 'componentField.kind': 'GroupsMyGroup' },
-  { $set: { 'componentField.$.kind': 'ComponentCategoryMyComponent' } },
+  { $set: { 'componentField.$[].kind': 'ComponentCategoryMyComponent' } },
   { multi: true }
 );
 ```

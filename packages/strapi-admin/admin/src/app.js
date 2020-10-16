@@ -30,7 +30,7 @@ import { BrowserRouter } from 'react-router-dom';
 // Strapi provider with the internal APIs
 import { StrapiProvider } from 'strapi-helper-plugin';
 import { merge } from 'lodash';
-import { Fonts } from '@buffetjs/styles';
+import Fonts from './components/Fonts';
 import { freezeApp, pluginLoaded, unfreezeApp, updatePlugin } from './containers/App/actions';
 import { showNotification } from './containers/NotificationProvider/actions';
 
@@ -130,6 +130,15 @@ const unlockApp = () => {
   dispatch(unfreezeApp());
 };
 
+const lockAppWithOverlay = () => {
+  const overlayblockerParams = {
+    children: <div />,
+    noGradient: true,
+  };
+
+  lockApp(overlayblockerParams);
+};
+
 window.strapi = Object.assign(window.strapi || {}, {
   node: MODE || 'host',
   env: NODE_ENV,
@@ -165,6 +174,7 @@ window.strapi = Object.assign(window.strapi || {}, {
     window.navigator.userLanguage ||
     'en',
   lockApp,
+  lockAppWithOverlay,
   unlockApp,
   injectReducer,
   injectSaga,

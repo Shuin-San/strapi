@@ -58,7 +58,7 @@ Follow the instructions and return to your command line.
 
 Create a [new Strapi project](../getting-started/quick-start.md) (if you want to deploy an existing project go to step 4).
 
-::: warning NOTE
+::: tip NOTE
 
 If you plan to use **MongoDB** with your project, [refer to the create a Strapi project with MongoDB section of the documentation](../guides/databases.md#install-mongodb-locally) then, jump to step 4.
 
@@ -91,7 +91,7 @@ npx create-strapi-app my-project --quickstart
 ::::
 
 ::: tip
-When you use `--quickstart` to create a Strapi project locally, a **SQLite database** is used which is not compatible with Heroku. Therefore, another database option [must be chosen](#_7-heroku-database-set-up).
+When you use `--quickstart` to create a Strapi project locally, a **SQLite database** is used which is not compatible with Heroku. Therefore, another database option [must be chosen](#_6-heroku-database-set-up).
 :::
 
 #### 4. Update `.gitignore`
@@ -131,7 +131,7 @@ heroku create
 
 You can use `heroku create custom-project-name`, to have Heroku create a `custom-project-name.heroku.com` URL. Otherwise, Heroku will automatically generate a random project name (and URL) for you.
 
-::: warning NOTE
+::: tip NOTE
 If you have a Heroku project app already created. You would use the following step to initialize your local project folder:
 
 `Path: ./my-project/`
@@ -196,30 +196,29 @@ Please replace these above values with your actual values.
 
 #### 4. Update your database config file
 
-Replace the contents of `database.js` with the following:
+Replace the contents of `database.json` with the following:
 
-`Path: ./config/database.js`.
+`Path: ./config/environments/production/database.json`.
 
-```js
-module.exports = ({ env }) => ({
-  defaultConnection: 'default',
-  connections: {
-    default: {
-      connector: 'bookshelf',
-      settings: {
-        client: 'postgres',
-        host: env('DATABASE_HOST', '127.0.0.1'),
-        port: env.int('DATABASE_PORT', 27017),
-        database: env('DATABASE_NAME', 'strapi'),
-        username: env('DATABASE_USERNAME', ''),
-        password: env('DATABASE_PASSWORD', ''),
+```json
+{
+  "defaultConnection": "default",
+  "connections": {
+    "default": {
+      "connector": "bookshelf",
+      "settings": {
+        "client": "postgres",
+        "host": "${process.env.DATABASE_HOST}",
+        "port": "${process.env.DATABASE_PORT}",
+        "database": "${process.env.DATABASE_NAME}",
+        "username": "${process.env.DATABASE_USERNAME}",
+        "password": "${process.env.DATABASE_PASSWORD}",
+        "ssl": { "rejectUnauthorized": false }
       },
-      options: {
-        ssl: false,
-      },
-    },
-  },
-});
+      "options": {}
+    }
+  }
+}
 ```
 
 #### 5. Install the `pg` node module
@@ -264,84 +263,26 @@ Please replace the `<password>` and `my-database-name` values with the your actu
 
 #### 2. Update your database config file
 
-`Path: ./config/database.js`.
+Replace the contents of `database.json` with the following:
 
-```js
-module.exports = ({ env }) => ({
-  defaultConnection: 'default',
-  connections: {
-    default: {
-      connector: 'mongoose',
-      settings: {
-        uri: env('DATABASE_URI'),
+`Path: ./config/environments/production/database.json`.
+
+```json
+{
+  "defaultConnection": "default",
+  "connections": {
+    "default": {
+      "connector": "mongoose",
+      "settings": {
+        "uri": "${process.env.DATABASE_URI}",
+        "database": "${process.env.DATABASE_NAME}"
       },
-      options: {
-        ssl: true,
-      },
-    },
-  },
-});
-```
-
-If you need to configure the connection differently (e.g using `host`,`port`...) you should set the default database config like so:
-
-`Path: ./config/database.js`.
-
-```js
-module.exports = ({ env }) => ({
-  defaultConnection: 'default',
-  connections: {
-    default: {
-      connector: 'mongoose',
-      settings: {},
-      options: {},
-    },
-  },
-});
-```
-
-Then set the development and the production configurations separatly:
-
-`Path: ./config/env/development/database.js`.
-
-```js
-module.exports = ({ env }) => ({
-  defaultConnection: 'default',
-  connections: {
-    default: {
-      connector: 'mongoose',
-      settings: {
-        host: env('DATABASE_HOST'),
-        port: env.int('DATABASE_PORT'),
-        database: env('DATABASE_NAME'),
-        username: env('DATABASE_USERNAME'),
-        password: env('DATABASE_PASSWORD'),
-      },
-      options: {},
-    },
-  },
-});
-```
-
-and finally for the `production` env:
-
-`Path: ./config/env/production/database.js`.
-
-```js
-module.exports = ({ env }) => ({
-  defaultConnection: 'default',
-  connections: {
-    default: {
-      connector: 'mongoose',
-      settings: {
-        uri: env('DATABASE_URI'),
-      },
-      options: {
-        ssl: true,
-      },
-    },
-  },
-});
+      "options": {
+        "ssl": true
+      }
+    }
+  }
+}
 ```
 
 :::

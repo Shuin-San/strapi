@@ -1,5 +1,8 @@
 'use strict';
 
+// required first because it loads env files.
+const loadConfiguration = require('../core/app-configuration');
+
 const path = require('path');
 const cluster = require('cluster');
 const fs = require('fs-extra');
@@ -7,21 +10,22 @@ const chokidar = require('chokidar');
 const execa = require('execa');
 
 const { logger } = require('strapi-utils');
-const loadConfiguration = require('../core/app-configuration');
 const strapi = require('../index');
 
 /**
  * `$ strapi develop`
  *
  */
-module.exports = async function({ build, watchAdmin }) {
+module.exports = async function({ build, watchAdmin, browser }) {
   const dir = process.cwd();
   const config = loadConfiguration(dir);
 
   const adminWatchIgnoreFiles = config.get('server.admin.watchIgnoreFiles', []);
+  const serveAdminPanel = config.get('server.admin.serveAdminPanel', true);
 
+  const buildExists = fs.existsSync(path.join(dir, 'build'));
   // Don't run the build process if the admin is in watch mode
-  if (build && !watchAdmin && !fs.existsSync(path.join(dir, 'build'))) {
+  if (build && !watchAdmin && serveAdminPanel && !buildExists) {
     try {
       execa.shellSync('npm run -s build -- --no-optimization', {
         stdio: 'inherit',
@@ -35,7 +39,7 @@ module.exports = async function({ build, watchAdmin }) {
     if (cluster.isMaster) {
       if (watchAdmin) {
         try {
-          execa('npm', ['run', '-s', 'strapi', 'watch-admin'], {
+          execa('npm', ['run', '-s', 'strapi', 'watch-admin', '--', '--browser', browser], {
             stdio: 'inherit',
           });
         } catch (err) {
@@ -129,8 +133,6 @@ function watchFileChanges({ dir, strapiInstance, watchIgnoreFiles }) {
       '**/index.html',
       '**/public',
       '**/public/**',
-      '**/cypress',
-      '**/cypress/**',
       '**/*.db*',
       '**/exports/**',
       ...watchIgnoreFiles,

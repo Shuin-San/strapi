@@ -182,6 +182,7 @@ describe('CTB | containers | FormModal | reducer | actions', () => {
         value: 'application::address.address',
         oneThatIsCreatingARelationWithAnother: 'address',
         selectedContentTypeFriendlyName: 'address',
+        targetContentTypeAllowedRelations: null,
       };
       const expected = state
         .setIn(['modifiedData', 'target'], 'application::address.address')
@@ -210,10 +211,115 @@ describe('CTB | containers | FormModal | reducer | actions', () => {
         value: 'application::country.country',
         oneThatIsCreatingARelationWithAnother: 'address',
         selectedContentTypeFriendlyName: 'country',
+        targetContentTypeAllowedRelations: null,
       };
       const expected = state
         .setIn(['modifiedData', 'target'], 'application::country.country')
         .setIn(['modifiedData', 'name'], 'countries');
+
+      expect(reducer(state, action)).toEqual(expected);
+    });
+
+    it('Should handle the target change correctly if the target has restricted relations and the nature is not correct', () => {
+      const state = initialState.setIn(
+        ['modifiedData'],
+        fromJS({
+          name: 'categories',
+          nature: 'manyToMany',
+          targetAttribute: 'addresses',
+          target: 'application::category.category',
+          unique: false,
+          dominant: true,
+          columnName: null,
+          targetColumnName: null,
+        })
+      );
+      const action = {
+        type: 'ON_CHANGE',
+        keys: ['target'],
+        value: 'application::country.country',
+        oneThatIsCreatingARelationWithAnother: 'address',
+        selectedContentTypeFriendlyName: 'country',
+        targetContentTypeAllowedRelations: ['oneWay'],
+      };
+      const expected = state
+        .setIn(['modifiedData', 'target'], 'application::country.country')
+        .setIn(['modifiedData', 'name'], 'country')
+        .setIn(['modifiedData', 'targetAttribute'], '-')
+        .setIn(['modifiedData', 'nature'], 'oneWay');
+
+      expect(reducer(state, action)).toEqual(expected);
+    });
+
+    it('Should handle the target change correctly if the target has restricted relations and the nature is correct', () => {
+      const state = initialState.setIn(
+        ['modifiedData'],
+        fromJS({
+          name: 'categories',
+          nature: 'manyWay',
+          targetAttribute: 'addresses',
+          target: 'application::category.category',
+          unique: false,
+          dominant: true,
+          columnName: null,
+          targetColumnName: null,
+        })
+      );
+      const action = {
+        type: 'ON_CHANGE',
+        keys: ['target'],
+        value: 'application::country.country',
+        oneThatIsCreatingARelationWithAnother: 'address',
+        selectedContentTypeFriendlyName: 'country',
+        targetContentTypeAllowedRelations: ['oneWay', 'manyWay'],
+      };
+      const expected = state
+        .setIn(['modifiedData', 'target'], 'application::country.country')
+        .setIn(['modifiedData', 'name'], 'countries')
+        .setIn(['modifiedData', 'targetAttribute'], '-');
+
+      expect(reducer(state, action)).toEqual(expected);
+    });
+
+    it('should remove the default value if the type of date input type has been changed', () => {
+      const state = initialState.setIn(
+        ['modifiedData'],
+        fromJS({
+          name: 'short_movie_time',
+          type: 'time',
+          default: '00:30:00',
+        })
+      );
+      const action = {
+        type: 'ON_CHANGE',
+        keys: ['type'],
+        value: 'datetime',
+      };
+      const expected = state
+        .setIn(['modifiedData', 'name'], 'short_movie_time')
+        .setIn(['modifiedData', 'type'], 'datetime')
+        .removeIn(['modifiedData', 'default']);
+
+      expect(reducer(state, action)).toEqual(expected);
+    });
+
+    it('should not remove the default value if the type of another input type has been changed', () => {
+      const state = initialState.setIn(
+        ['modifiedData'],
+        fromJS({
+          name: 'number_of_movies',
+          type: 'integer',
+          default: '0',
+        })
+      );
+      const action = {
+        type: 'ON_CHANGE',
+        keys: ['type'],
+        value: 'biginteger',
+      };
+      const expected = state
+        .setIn(['modifiedData', 'name'], 'number_of_movies')
+        .setIn(['modifiedData', 'type'], 'biginteger');
 
       expect(reducer(state, action)).toEqual(expected);
     });
